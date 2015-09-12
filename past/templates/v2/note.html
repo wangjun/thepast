@@ -1,0 +1,37 @@
+{% extends "v2/base.html" %}
+{% import "status.html" as status_tmpl_helper %}
+{% import "blocks.html" as blocks_tmpl_helper %}
+
+<!-- 日记 -->
+{%block title%}日记本{{user.name}} | 旧时光{%endblock%}
+
+{%block middlebar%}
+    <div class="span12">
+        <div class="alert alert-success">
+            作者：<a href="/{{user.uid}}">{{user.name}}</a> <br/>
+            题目：<a id="note_date" href="/note/{{note.id}}">{{title}}</a>
+        </div>
+
+        {%if note.fmt == consts.NOTE_FMT_MARKDOWN%}
+            <div class="markdown">
+                {{content|safe}}
+            </div>
+        {%else%}
+            <div id="note">
+                <div  name="content" id="create">
+                {{content}}
+                </div>
+            </div>
+        {%endif%}
+        <div class="clear"></div>
+    </div>
+{%endblock%}
+
+{%block more_js%}
+{{super()}}
+<script type="text/javascript">
+    jQuery("#nav_item_explore").removeClass("active");
+    jQuery("#nav_item_past").removeClass("active");
+    jQuery("#nav_item_note").addClass("active");
+</script>
+{%endblock%}

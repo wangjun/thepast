@@ -5,21 +5,26 @@ import hashlib
 import re
 from MySQLdb import IntegrityError
 
-from past import config
 from past.utils.escape import json_encode, json_decode, clear_html_element
 from past.utils.logger import logging
-from past.store import mongo_conn, mc, db_conn
+from past.store import mc, db_conn
 from past.corelib.cache import cache, pcache, HALF_HOUR
-from .user import UserAlias
+from .user import UserAlias, User
+from .note import Note
 from .data import DoubanMiniBlogData, DoubanNoteData, DoubanStatusData, \
-        SinaWeiboStatusData, QQWeiboStatusData, TwitterStatusData
+        SinaWeiboStatusData, QQWeiboStatusData, TwitterStatusData,\
+        WordpressData, ThepastNoteData, RenrenStatusData, RenrenBlogData, \
+        RenrenAlbumData, RenrenPhotoData, InstagramStatusData
+from .kv import RawStatus
+from past import config
+from past import consts
 
 log = logging.getLogger(__file__)
 
+#TODO:refactor,暴露在外面的接口为Status
+#把Data相关的都应该隐藏起来,不允许外部import
+
 class Status(object):
-    
-    STATUS_REDIS_KEY = "/status/text/%s"
-    RAW_STATUS_REDIS_KEY = "/status/raw/%s"
     
     def __init__(self, id, user_id, origin_id, 
             create_time, site, category, title=""):
@@ -30,17 +35,18 @@ class Status(object):
         self.site = site
         self.category = category
         self.title = title
-        self.text = mongo_conn.get(self.__class__.STATUS_REDIS_KEY % self.id)
-        self.text = json_decode(self.text) if self.text else ""
-        self.origin_user_id = UserAlias.get_by_user_and_type(self.user_id, self.site).alias
+        _data_obj = self.get_data()
+        ##对于140字以内的消息，summary和text相同；对于wordpress等长文，summary只是摘要，text为全文
+        ##summary当作属性来，可以缓存在mc中，text太大了，作为一个method
+        self.summary = _data_obj and _data_obj.get_summary() or ""
         if self.site == config.OPENID_TYPE_DICT[config.OPENID_TWITTER]:
             self.create_time += datetime.timedelta(seconds=8*3600)
-
-        self.bare_text = self._generate_bare_text()
+        
+        self._bare_text = self._generate_bare_text()
 
     def __repr__(self):
-        return "<Status id=%s, user_id=%s, origin_id=%s, cate=%s, title=%s>" \
-            %(self.id, self.user_id, self.origin_id, self.category, self.title)
+        return "<Status id=%s, user_id=%s, origin_id=%s, cate=%s>" \
+            %(self.id, self.user_id, self.origin_id, self.category)
     __str__ = __repr__
 
     def __eq__(self, other):
@@ -49,7 +55,7 @@ class Status(object):
         ##FIXME:abs(self.create_time - other.create_time) <= datetime.timedelta(1) 
         if self.user_id == other.user_id \
                 and abs(self.create_time.day - other.create_time.day) == 0 \
-                and  self.bare_text[:15] == other.bare_text[:15]:
+                and  self._bare_text == other._bare_text:
             return True
         return False
 
@@ -57,7 +63,7 @@ class Status(object):
         return not self.__eq__(other)
 
     def __hash__(self):
-        if self.category == config.CATE_QQWEIBO_STATUS and self.get_retweeted_data() != self.text:
+        if self.category == config.CATE_QQWEIBO_STATUS and self.get_retweeted_data():
             return int(self.id)
         if (self.category == config.CATE_SINA_STATUS or self.category == config.CATE_DOUBAN_STATUS) \
                 and self.get_retweeted_data():
@@ -65,40 +71,69 @@ class Status(object):
         if self.category == config.CATE_DOUBAN_STATUS and \
                 self.get_data() and self.get_data().get_attachments():
             return int(self.id)
-        s = u"%s%s%s" % (self.user_id, self.bare_text[:15], self.create_time.day)
+        if self.category == config.CATE_THEPAST_NOTE:
+            return int(self.id)
+        if self.category == config.CATE_RENREN_STATUS or \
+                self.category == config.CATE_RENREN_BLOG or \
+                self.category == config.CATE_RENREN_ALBUM or \
+                self.category == config.CATE_RENREN_PHOTO or \
+                self.category == config.CATE_INSTAGRAM_STATUS:
+            return int(self.id)
+        s = u"%s%s%s" % (self.user_id, self._bare_text, self.create_time.day)
         d = hashlib.md5()
         d.update(s.encode("utf8"))
         return int(d.hexdigest(),16)
         
-    def _generate_bare_text(self, offset=150):
-        bare_text = self.text[:offset]
+    def _generate_bare_text(self, offset=140):
+        bare_text = self.summary[:offset]
         bare_text = clear_html_element(bare_text).replace(u"《", "").replace(u"》", "").replace("amp;","")
         bare_text = re.sub("\s", "", bare_text)
         bare_text = re.sub("http://t.cn/[a-zA-Z0-9]+", "", bare_text)
         bare_text = re.sub("http://t.co/[a-zA-Z0-9]+", "", bare_text)
         bare_text = re.sub("http://url.cn/[a-zA-Z0-9]+", "", bare_text)
         bare_text = re.sub("http://goo.gl/[a-zA-Z0-9]+", "", bare_text)
+        bare_text = re.sub("http://dou.bz/[a-zA-Z0-9]+", "", bare_text).replace(u"说：", "")
         return bare_text  
 
     ##TODO:这个clear_cache需要拆分
     @classmethod
-    def _clear_cache(self, user_id, status_id, cate=None):
+    def _clear_cache(cls, user_id, status_id, cate=""):
         if status_id:
             mc.delete("status:%s" % status_id)
         if user_id:
-            mc.delete("status_ids:user:%scate:None" % user_id)
+            mc.delete("status_ids:user:%scate:" % user_id)
             if cate:
                 mc.delete("status_ids:user:%scate:%s" % (user_id, cate))
 
-    #@property
-    #def text(self):
-    #    _text = mongo_conn.get(self.__class__.STATUS_REDIS_KEY % self.id)
-    #    return json_decode(_text) if _text else ""
+    def privacy(self):
+        if self.category == config.CATE_THEPAST_NOTE:
+            note = Note.get(self.origin_id)
+            return note and note.privacy
+        else:
+            return consts.STATUS_PRIVACY_PUBLIC
+        
+    @property
+    def text(self):
+        if self.category == config.CATE_THEPAST_NOTE:
+            note = Note.get(self.origin_id)
+            return note and note.content
+        else:
+            r = RawStatus.get(self.id)
+            _text = r.text if r else ""
+            return json_decode(_text) if _text else ""
 
     @property
     def raw(self):
-        _raw = mongo_conn.get(Status.RAW_STATUS_REDIS_KEY % self.id)
-        return json_decode(_raw) if _raw else ""
+        if self.category == config.CATE_THEPAST_NOTE:
+            note = Note.get(self.origin_id)
+            return note
+        else:
+            r = RawStatus.get(self.id)
+            _raw = r.raw if r else ""
+            try:
+                return json_decode(_raw) if _raw else ""
+            except:
+                return ""
         
     @classmethod
     def add(cls, user_id, origin_id, create_time, site, category, title, 
@@ -111,19 +146,14 @@ class Status(object):
                     values (%s,%s,%s,%s,%s,%s)""",
                     (user_id, origin_id, create_time, site, category, title))
             status_id = cursor.lastrowid
-            try:
-                if text is not None:
-                    mongo_conn.set(cls.STATUS_REDIS_KEY %status_id, json_encode(text))
-                if raw is not None:
-                    mongo_conn.set(cls.RAW_STATUS_REDIS_KEY %status_id, raw)
-            except Exception, e:
-                log.warning('ERROR_MONGODB:%s' % e)
-                db_conn.rollback()
-            else:
+            if status_id > 0:
+                text = json_encode(text) if text is not None else ""
+                raw = json_encode(raw) if raw is not None else ""
+                RawStatus.set(status_id, text, raw)
                 db_conn.commit()
                 status = cls.get(status_id)
         except IntegrityError:
-            #log.warning("add status duplicated, ignore...")
+            log.warning("add status duplicated, uniq key is %s:%s:%s, ignore..." %(origin_id, site, category))
             db_conn.rollback()
         finally:
             cls._clear_cache(user_id, None, cate=category)
@@ -157,23 +187,38 @@ class Status(object):
             status = cls(status_id, *row)
         cursor and cursor.close()
 
+        if status and status.category == config.CATE_THEPAST_NOTE:
+            note = Note.get(status.origin_id)
+            status.title = note and note.title
+
         return status
 
     @classmethod
     @pcache("status_ids:user:{user_id}cate:{cate}")
-    def get_ids(cls, user_id, start=0, limit=20, order="create_time", cate=None):
+    def get_ids(cls, user_id, start=0, limit=20, cate=""):
+        return cls._get_ids(user_id, start, limit, 
+                order="create_time desc", cate=cate)
+
+    @classmethod
+    @pcache("status_ids_asc:user:{user_id}cate:{cate}")
+    def get_ids_asc(cls, user_id, start=0, limit=20, cate=""):
+        return cls._get_ids(user_id, start, limit, 
+                order="create_time", cate=cate)
+
+    @classmethod
+    def _get_ids(cls, user_id, start=0, limit=20, order="create_time desc", cate=""):
         cursor = None
         if not user_id:
             return []
-        if cate is not None:
+        if cate:
             if str(cate) == str(config.CATE_DOUBAN_NOTE):
                 return []
             sql = """select id from status where user_id=%s and category=%s
-                    order by """ + order + """ desc limit %s,%s""" 
+                    order by """ + order + """ limit %s,%s""" 
             cursor = db_conn.execute(sql, (user_id, cate, start, limit))
         else:
             sql = """select id from status where user_id=%s and category!=%s
-                    order by """ + order + """ desc limit %s,%s""" 
+                    order by """ + order + """ limit %s,%s""" 
             cursor = db_conn.execute(sql, (user_id, config.CATE_DOUBAN_NOTE, start, limit))
         rows = cursor.fetchall()
         cursor and cursor.close()
@@ -182,9 +227,9 @@ class Status(object):
     @classmethod
     def get_ids_by_date(cls, user_id, start_date, end_date):
         cursor = db_conn.execute('''select id from status 
-                where user_id=%s and create_time>=%s and create_time<=%s
-                order by time desc''',
-                (user_id, start_date, end_date))
+                where user_id=%s and category!=%s and create_time>=%s and create_time<=%s
+                order by create_time desc''',
+                (user_id, config.CATE_DOUBAN_NOTE, start_date, end_date))
         rows = cursor.fetchall()
         cursor and cursor.close()
         return [x[0] for x in rows]
@@ -229,8 +274,12 @@ class Status(object):
     ## just for tecent_weibo
     @classmethod
     def get_oldest_create_time(cls, cate, user_id):
-        cursor = db_conn.execute('''select min(create_time) from status 
-            where category=%s and user_id=%s''', (cate, user_id))
+        if cate:
+            cursor = db_conn.execute('''select min(create_time) from status 
+                where category=%s and user_id=%s''', (cate, user_id))
+        else:
+            cursor = db_conn.execute('''select min(create_time) from status 
+                where user_id=%s''', user_id)
         row = cursor.fetchone()
         cursor and cursor.close()
         if row:
@@ -260,6 +309,7 @@ class Status(object):
         else:
             return 0
 
+    #TODO:每次新增第三方，需要修改这里
     def get_data(self):
         if self.category == config.CATE_DOUBAN_MINIBLOG:
             return DoubanMiniBlogData(self.raw)
@@ -273,12 +323,28 @@ class Status(object):
             return QQWeiboStatusData(self.raw)
         elif self.category == config.CATE_DOUBAN_STATUS:
             return DoubanStatusData(self.raw)
+        elif self.category == config.CATE_WORDPRESS_POST:
+            return WordpressData(self.raw)
+        elif self.category == config.CATE_THEPAST_NOTE:
+            return ThepastNoteData(self.raw)
+        elif self.category == config.CATE_RENREN_STATUS:
+            return RenrenStatusData(self.raw)
+        elif self.category == config.CATE_RENREN_BLOG:
+            return RenrenBlogData(self.raw)
+        elif self.category == config.CATE_RENREN_ALBUM:
+            return RenrenAlbumData(self.raw)
+        elif self.category == config.CATE_RENREN_PHOTO:
+            return RenrenPhotoData(self.raw)
+        elif self.category == config.CATE_INSTAGRAM_STATUS:
+            return InstagramStatusData(self.raw)
         else:
             return None
 
     def get_origin_uri(self):
+        ##d是AbsData的子类实例
         d = self.get_data()
-        if self.category == config.CATE_DOUBAN_MINIBLOG or self.category == config.CATE_DOUBAN_STATUS:
+        if self.category == config.CATE_DOUBAN_MINIBLOG or \
+                self.category == config.CATE_DOUBAN_STATUS:
             ua = UserAlias.get_by_user_and_type(self.user_id, 
                     config.OPENID_TYPE_DICT[config.OPENID_DOUBAN])
             if ua:
@@ -292,6 +358,17 @@ class Status(object):
             return (config.OPENID_TWITTER, d.get_origin_uri())
         elif self.category == config.CATE_QQWEIBO_STATUS:
             return (config.OPENID_QQ, config.QQWEIBO_STATUS % self.origin_id)
+        elif self.category == config.CATE_WORDPRESS_POST:
+            return (config.OPENID_WORDPRESS, d.get_origin_uri())
+        elif self.category == config.CATE_THEPAST_NOTE:
+            return (config.OPENID_THEPAST, d.get_origin_uri())
+        elif self.category == config.CATE_RENREN_STATUS or \
+                self.category == config.CATE_RENREN_BLOG or \
+                self.category == config.CATE_RENREN_ALBUM or \
+                self.category == config.CATE_RENREN_PHOTO:
+            return (config.OPENID_RENREN, d.get_origin_uri())
+        elif self.category == config.CATE_INSTAGRAM_STATUS:
+            return (config.OPENID_INSTAGRAM, d.get_origin_uri())
         else:
             return None
 
@@ -300,6 +377,9 @@ class Status(object):
         if hasattr(d, "get_retweeted_data"):
             return d.get_retweeted_data()
         return None
+
+    def get_thepast_user(self):
+        return User.get(self.user_id)
 
 
 ## Sycktask: 用户添加的同步任务
@@ -434,8 +514,8 @@ def get_all_text_by_user(user_id, limit=1000):
     status_ids = Status.get_ids(user_id, limit=limit)
     for s in Status.gets(status_ids):
         try:
-            #_t = ''.join( [x for x in s.text if is_cn_or_en(x)] )
-            _t = s.text
+            ##TODO:这里用的summary，是为了效率上的考虑
+            _t = s.summary
 
             retweeted_data = s.get_retweeted_data()
             if retweeted_data:
@@ -448,15 +528,15 @@ def get_all_text_by_user(user_id, limit=1000):
             print e
     return text
 
-@cache("sids:{user_id}:{day}", expire=3600*24)
-def get_status_ids_yesterday(user_id, day):
-    today = datetime.datetime.now().strftime("%Y-%m-%d")
-    ids = Status.get_ids_by_date(user_id, day, today)
+@cache("sids:{user_id}:{now}", expire=3600*24)
+def get_status_ids_yesterday(user_id, now):
+    s = (now - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+    e = now.strftime("%Y-%m-%d")
+    ids = Status.get_ids_by_date(user_id, s, e)
     return ids
 
-@cache("sids_today_in_history:{user_id}:{day}", expire=3600*24)
-def get_status_ids_today_in_history(user_id, day):
-    now = datetime.datetime.now()
+@cache("sids_today_in_history:{user_id}:{now}", expire=3600*24)
+def get_status_ids_today_in_history(user_id, now):
     years = range(now.year-1, 2005, -1)
     dates = [("%s-%s" %(y,now.strftime("%m-%d")), 
         "%s-%s" %(y,(now+datetime.timedelta(days=1)).strftime("%m-%d"))) for y in years]

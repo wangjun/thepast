@@ -28,13 +28,22 @@ if __name__ == "__main__":
                 sync_task = SyncTask.get(queue.task_id)
                 if not sync_task:
                     continue
+
+                ## 现在不同步豆瓣日记
                 if str(sync_task.category) == str(config.CATE_DOUBAN_NOTE):
                     continue
+
+                ## 同步wordpress rss
+                if str(sync_task.category) == str(config.CATE_WORDPRESS_POST):
+                    jobs.sync_wordpress(sync_task)
+                    queue.remove()
+                    continue
+
                 max_sync_times = 0
                 min_id = Status.get_min_origin_id(sync_task.category, sync_task.user_id)
                 if sync_task:
                     while True:
-                        if max_sync_times >= 5:
+                        if max_sync_times >= 20:
                             break
                         r = jobs.sync(sync_task, old=True)
                         new_min_id = Status.get_min_origin_id(sync_task.category, sync_task.user_id)
@@ -43,8 +52,7 @@ if __name__ == "__main__":
                         min_id = new_min_id
                         max_sync_times += 1
             queue.remove()
-            time.sleep(5)
-        time.sleep(5)
+            time.sleep(1)
+        time.sleep(1)
     except Exception, e:
-        import traceback
-        print '%s %s' % (datetime.datetime.now(), traceback.format_exc())
+        print e

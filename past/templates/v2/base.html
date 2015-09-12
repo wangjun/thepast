@@ -1,0 +1,314 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="baidu-site-verification" content="eXVLFDdOkBAsy29Z" />
+    <title>{%block title_block%} The Past of Me | 旧时光{%endblock%}</title>
+
+{% block css %}
+    <link rel="stylesheet" type="text/css" media="screen" href="/static/bootstrap/css/bootstrap.min.css">
+    <link rel="stylesheet" type="text/css" media="screen" href="/static/bootstrap/css/bootstrap-responsive.min.css">
+    <link rel="stylesheet" type="text/css" media="screen" href="/static/css/all.css?v=v0.0.4">
+    <link rel="stylesheet" type="text/css" media="screen" href="/static/css/new.css?v=v0.0.2">
+{% endblock %}
+
+{% block js%}
+    <script src="{{ url_for('static', filename='js/jquery.js') }}" type="text/javascript"></script>
+    <script src="{{ url_for('static', filename='js/date.format.js') }}" type="text/javascript"></script>
+    <script src="{{ url_for('static', filename='js/jquery.masonry.min.js') }}" type="text/javascript"></script>
+    <script src="{{ url_for('static', filename='js/jquery.magnifier.js') }}" type="text/javascript"></script>
+    <script src="{{ url_for('static', filename='bootstrap/js/bootstrap.min.js') }}" type="text/javascript"></script>
+{% endblock %}
+</head>
+
+<body>
+{% import "blocks.html" as blocks_tmpl_helper %}
+
+{%block top_nav%}
+<div class="navbar navbar-fixed-top" style="opacity:0.85;">
+    <div class="navbar-inner">
+        <div class="container">
+          <a class="btn btn-navbar" data-toggle="collapse" data-target=".navbar-responsive-collapse">
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+          </a>
+          {%if g.user%}
+          <a class="brand" href="/{{g.user.uid}}">
+          {%else%}
+          <a class="brand" href="/">
+          {%endif%}
+          <img src="/static/img/logo.png" style="height:26px;width:122px;" alt="旧时光"></img></a>
+
+          <div class="nav-collapse collapse navbar-responsive-collapse">
+            <ul class="nav">
+            {%block nav_menu_left%}
+            {%if g.user%}
+              <li id="nav_item_explore"><a style="padding-top:12px;" href="/explore">发现</a></li>
+              <li id="nav_item_past"><a style="padding-top:12px;" href="/past">过往</a></li>
+              <li id="nav_item_note" class="dropdown">
+                  <a style="padding-top:12px;" href="#" class="dropdown-toggle" data-toggle="dropdown">日记<b class="caret"></b></a>
+                  <ul class="dropdown-menu">
+                    <li><a href="/notes">我的日记</a></li>
+                    <li class="divider"></li>
+                    <li><a href="/note/create">写日记</a></li>
+                  </ul>
+              </li>
+            {%else%}
+              <li id="nav_item_explore" class="active"><a style="padding-top:12px;" href="/explore">发现</a></li>
+            {%endif%}
+            {%endblock%}
+            </ul>
+
+            <ul class="nav pull-right">
+            {%block nav_menu_right%}
+            {%if g.user%}
+            <li><a id="login_comt" style="padding-top:12px;" href="#"><i class="icon-share"></i>同步</a></li>
+            <li class="divider-vertical"></li>
+            <li class="dropdown">
+              <a href="#" class="dropdown-toggle" data-toggle="dropdown"> <img src="{{g.user.get_icon_url()}}" style="width:26px;height:26px; alt="{{g.user.name}}"></img><b class="caret"></b></a>
+              <ul class="dropdown-menu">
+                <li><a href="#" onclick="javascript:fn_connect();return false;"><i class="icon-plus"></i>绑定我的其他帐号</a></li>
+                <li><a href="/bind/wordpress"><i class="icon-plus"></i>绑定我的博客</a></li>
+                <li class="divider"></li>
+                <li><a href="/{{g.user.uid}}"><i class="icon-user"></i>我的旧时光</a></li>
+                <li><a href="/{{g.user.uid}}/pdf"><i class="icon-file"></i>我的PDF</a></li>
+                <li class="divider"></li>
+                <li><a href="/about"><i class="icon-question-sign"></i>关于和帮助</a></li>
+                <li><a href="/settings"><i class="icon-wrench"></i>帐号和设置</a></li>
+                <li><a href="/logout"><i class="icon-off"></i>退出登录</a></li>
+                <li class="divider"></li>
+                <li><a href="/suicide" onclick="return confirm('要解绑帐号和删除帐号，会清空你在thepast上的所有数据，并且没有备份，确定自杀么？')"><i class="icon-off"></i>解除绑定 & 删除我的账号</a></li>
+              </ul>
+            </li>
+            {%else%}
+            <li><button id="login_btn" class="btn btn-small" href="#">登录</button></li>
+            {%endif%}
+
+            {%endblock%}
+            </ul>
+          </div> <!-- collapse-->
+        </div> <!--container-->
+    </div> <!-- narvbar inner-->
+</div> <!-- navbar-->
+{%endblock%}
+
+
+<div class="container" style="margin-top:47px;">
+{%block container%}
+    {%block top_tips%}
+    <div class="row">
+        <div class="span12">
+        {{blocks_tmpl_helper.notification_block(g.user)}}
+        </div>
+    </div>
+    {%endblock%}
+    {%block hero_unit%}{%endblock%}
+    {%block main%}
+    <div class="row">
+        {%block sidebar%}
+        {%endblock%}
+        {%block middlebar%}
+        {%endblock%}
+        {%block rightbar%}
+        {%endblock%}
+    </div>
+    {%endblock%}
+    
+    <div class="row">
+        <div class="span12">
+        <hr/>
+        <footer>
+            {%block footer%}
+            <div id="past_text">
+               <p>总有那么一天，想回过头来看看</p>
+               <p>看看这过往</p>
+               <p>或许是美好的时光</p>
+               <p>亦或是不羁的岁月</p>
+               <p>都是我们一起逝去的青春</p>
+               <p>过去的，总是美好的</p>
+               <p>你好，旧时光... </p>
+
+               <p>&copy; ThePast.Me 2012</p>
+               <p><script src="http://s17.cnzz.com/stat.php?id=3877715&web_id=3877715" language="JavaScript"></script></p>
+            </div>
+            {%endblock%}
+        </footer>
+        </div>
+    </div>
+{%endblock%}
+</div>
+
+{%block more_js%}
+<!-- 登录用户全站头部点击评论同步发微博 -->
+<div id="navi_comt">
+	<textarea id="navi_comts" onpropertychange="ResizeTextareaC()" oninput="ResizeTextareaC()" onkeyup="ResizeTextareaC()" placeholder="请输入140内文字" autofocus="true"></textarea>
+	<input type="submit" name="submit" id="navi_reshare_btn" value="发布微博">
+	<div href="#" title="关闭" id="comts_off"></div>
+</div>
+
+<!-- 匿名首页登录框 -->
+<div id="navi_login">
+	<div class="login_head"><h3>授权登录</h3></div>
+	<div class="login_connent">
+		<ul class="">
+			<li class="login qq"><a title="使用腾讯微博授权登录" href="/connect/qq">qq</a></li>
+			<li class="login sina"><a title="使用新浪微博授权登录" href="/connect/sina">sina</a></li>
+			<li class="login douban"><a title="使用豆瓣授权登录" href="/connect/douban">douban</a></li>
+			<li class="login twitter"><a title="使用 Twitter 授权登录" href="/connect/twitter">twitter</a></li>
+			<li class="login renren"><a title="使用人人授权登录" href="/connect/renren">renren</a></li>
+			<li class="login instagram"><a title="使用 instagram 授权登录" href="/connect/instagram">instagram</a></li>        
+		</ul>
+	</div>
+	<div href="#" title="关闭" id="login_off"></div>
+</div>
+
+
+<script type="text/javascript">
+function fn_connect(){
+    jQuery('#navi_login').animate({"top": "45px"}, 500);
+}
+//同步微博Textarea自适应高度
+var minHC = 150;
+var maxHC = 500;
+function ResizeTextareaC(){
+    var t = document.getElementById('navi_comts');
+    h = t.scrollHeight;
+    h = h > minHC ? h : minHC;
+    h = h > maxHC ? maxHC : h;
+}
+
+function fn_repost_status(sid){
+    var obj = jQuery("#story-" + sid);
+    var content = jQuery("#modal_reshare_" +sid+ " textarea").val();
+    var images = new Array();
+    jQuery("#modal_reshare_" +sid+ " img").each(function(i, img){
+        images.push(jQuery(img).attr("src"));
+    });
+    var providers = new Array();
+    jQuery("#modal_reshare_" +sid+ " input[name='provider']:checked").each(function(i, ck){
+        providers.push(jQuery(ck).val());
+    });
+
+    //console.log(sid + content + images + providers);
+    jQuery.ajax({
+        type: "POST",
+        async: false,
+        dataType: "json",
+        url: "/reshare_ajax",
+        data: {
+            "text": content,
+            "images": images.join("|"),
+            "providers": providers.join("|")
+        },
+        success: function(data){
+            if (data.ok == '1'){
+            }else{
+                alert(data.msg);
+            }
+        }
+    });
+}
+
+function fn_repost_modal(sid){
+    var obj = jQuery("#story-" + sid);
+
+    var summary = "#thepast.me# " + jQuery(obj.find(".summary")[0]).html();
+    jQuery("#modal_reshare_" +sid+ " textarea").val(summary);
+
+    var images = new Array();
+    obj.find(".post-image").each(function(i, img){
+        images.push(jQuery(img).attr("src"));
+    });
+    //console.log(images);
+
+    var thumbs = jQuery("#modal_reshare_" +sid+ " .thumbnails");
+    thumbs.html("");
+    for (var i in images){
+        var img = images[i];
+        var thumb_id = "thumb-" + sid + "-" + i;
+        var thumb_html = '<li class="span4" id="'+ thumb_id +'">'
+        + '<i class="icon-remove"></i>'
+        + '<a href="#" class="thumbnail">' 
+        + '<img src="' + img +  '"></img> </a>'
+        + '</li>';
+        thumbs.append(jQuery(thumb_html));
+        jQuery("#" + thumb_id + " i").click(function(){
+            jQuery("#" + thumb_id).remove();
+        });
+    }
+
+    
+    jQuery("#modal_reshare_" + sid).modal({
+        "keyboard": true,
+        "show": true,
+        "backdrop": "static"
+    });
+}
+
+function fn_do_sync_status(){
+        if(! "{{g.user.id}}"){
+            alert("请先登录：）");
+            return false;
+        }
+        var content = jQuery("#navi_comts").val();
+        jQuery.ajax({
+            type: "POST",
+            async: false,
+            dataType: "json",
+            url: "/reshare_ajax",
+            data: {
+                "text": content,
+                "images": "",
+                "providers": "",
+            },
+            success: function(data){
+                if (data.ok == '1'){
+                    jQuery('#navi_comts').css("height","145px");
+                    jQuery('#navi_comt').animate({"top": "-250px"}, 300);
+                }else{
+                    alert(data.msg);
+                }
+            }
+        });
+}
+
+function fn_open_comt(text){
+    jQuery("#navi_comts").val(text);
+	jQuery('#navi_comt').animate({"top": "45px"}, 500);
+}
+function fn_close_comt(){
+    jQuery('#navi_comts').css("height","145px");
+    jQuery('#navi_comt').animate({"top": "-250px"}, 300);
+}
+
+
+jQuery(function(){
+
+	//授权登录&关闭
+	jQuery('#login_btn').click(function(){
+		fn_connect();
+	});
+	jQuery('#login_off').click(function(){
+		jQuery('#navi_login').animate({"top": "-165px"}, 300);
+	});
+
+	//同步发微博&关闭
+	jQuery('#login_comt').click(function(){
+		fn_open_comt("");
+	});
+	jQuery('#comts_off').click(function(){
+		fn_close_comt();
+	});
+
+    jQuery('#navi_reshare_btn').click(function(){
+        fn_do_sync_status();
+    });
+
+});
+</script>
+{%endblock%}
+
+</body>
+</html>

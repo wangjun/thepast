@@ -1,14 +1,18 @@
 #-*- coding:utf-8 -*-
 
+import re
 from MySQLdb import IntegrityError
 from past.corelib.cache import cache, pcache
-from past.store import mongo_conn, mc, db_conn
+from past.store import mc, db_conn
 from past.utils import randbytes
 from past.utils.escape import json_decode, json_encode
+from .kv import Kv, UserProfile
 from past import config
 
 class User(object):
-    RAW_USER_REDIS_KEY = "/user/raw/%s"
+    UID_RE = r'^[a-z][0-9a-zA-Z_.-]{3,15}'
+    UID_MAX_LEN = 16
+    UID_MIN_LEN = 4
 
     def __init__(self, id):
         self.id = str(id)
@@ -18,19 +22,15 @@ class User(object):
         self.session_id = None
     
     def __repr__(self):
-        return "<User id=%s, name=%s, uid=%s, session_id=%s>" \
-                % (self.id, self.name, self.uid, self.session_id)
+        return "<User id=%s, uid=%s, session_id=%s>" \
+                % (self.id, self.uid, self.session_id)
     __str__ = __repr__
-
-    @property
-    def raw(self):
-        _raw = mongo_conn.get(User.RAW_USER_REDIS_KEY % self.id)
-        return json_decode(_raw) if _raw else ""
 
     @classmethod
     def _clear_cache(cls, user_id):
         if user_id:
             mc.delete("user:%s" % user_id)
+            UserProfile.clear_cache(user_id)
         mc.delete("user:ids")
         
     @classmethod
@@ -70,7 +70,7 @@ class User(object):
     @classmethod
     @cache("alias2user:{type_}{alias}")
     def get_user_by_alias(cls, type_, alias):
-        cursor = db_conn.execute('''select user_id from user_alis
+        cursor = db_conn.execute('''select user_id from user_alias
             where type=%s and alias=%s''', (type_, alias))
         row = cursor.fetchone()
         cursor and cursor.close()
@@ -82,9 +82,19 @@ class User(object):
 
     @classmethod
     @pcache("user:ids")
-    def get_ids(cls, start=0, limit=20, order="id desc"):
+    def get_ids(cls, start=0, limit=20):
         sql = """select id from user 
-                order by """ + order + """ limit %s, %s"""
+                order by id desc limit %s, %s"""
+        cursor = db_conn.execute(sql, (start, limit))
+        rows = cursor.fetchall()
+        cursor and cursor.close()
+        return [x[0] for x in rows]
+
+    @classmethod
+    @pcache("user:ids:asc")
+    def get_ids_asc(cls, start=0, limit=20):
+        sql = """select id from user 
+                order by id asc limit %s, %s"""
         cursor = db_conn.execute(sql, (start, limit))
         rows = cursor.fetchall()
         cursor and cursor.close()
@@ -104,9 +114,8 @@ class User(object):
     def set_email(self, email):
         cursor = None
         try:
-            cursor = db_conn.execute('''insert into passwd (user_id, email) values (%s,%s)
-                    ON DUPLICATE KEY UPDATE email=%s''',
-                    (self.id, email, email))
+            cursor = db_conn.execute('''replace into passwd (user_id, email) values (%s,%s)''',
+                    (self.id, email))
             db_conn.commit()
             return True
         except IntegrityError:
@@ -153,13 +162,55 @@ class User(object):
         db_conn.commit()
         User._clear_cache(self.id)
 
+    def update_uid(self, uid):
+        assert isinstance(uid, basestring)
+        if self.id != self.uid:
+            return False, "already_set"
+
+        if uid == self.uid:
+            return True, "same_with_old"
+
+        if len(uid) > User.UID_MAX_LEN:
+            return False, u"太长了，不能超过%s" %User.UID_MAX_LEN
+        if len(uid) < User.UID_MIN_LEN:
+            return False, u"太短了，不能小于%s" %User.UID_MIN_LEN
+        uid_re = re.compile(User.UID_RE)
+        if not uid_re.match(uid):
+            return False, u"只能包括字母数字和.-_"
+        
+        uid = uid.lower()
+        if uid in ["user", "pdf", "explore", "home", "visual", "settings", "admin", "past", "connect", "bind",
+            "i", "notes", "note", "status", "share", "timeline", "post", "login", "logout", "sync", "about", 
+            "connect", "dev", "api", "thepast", "thepast.me", ]:
+            return False, u"被系统占用了:)"
+            
+        try:
+            cursor = db_conn.execute("""update user set uid=%s where id=%s""", 
+                    (uid, self.id))
+            db_conn.commit()
+            User._clear_cache(self.id)
+            return True, u"设置成功"
+        except IntegrityError:
+            db_conn.rollback()
+            return False, u"被别人占用了:)"
+        finally:
+            cursor and cursor.close()
+
+        return False, "fail"
+            
+
     def set_profile(self, profile):
-        mongo_conn.set('/profile/%s' %self.id, json_encode(profile))
+        UserProfile.set(self.id, json_encode(profile))
         return self.get_profile()
 
     def get_profile(self):
-        r = mongo_conn.get('/profile/%s' %self.id)
-        return json_decode(r) if r else {}
+        r = UserProfile.get(self.id)
+        p = r.val if r else ""
+        try:
+            return json_decode(p) if p else {}
+        except ValueError, e:
+            print '------decode profile fail:', e
+            return {}
     
     def set_profile_item(self, k, v):
         p = self.get_profile()
@@ -174,7 +225,16 @@ class User(object):
     ##获取第三方帐号的profile信息
     def get_thirdparty_profile(self, openid_type):
         p = self.get_profile_item(openid_type)
-        return json_decode(p) if p else {}
+        if isinstance(p, dict):
+            return p
+        else:
+            r = json_decode(p) if p else {}
+            return r
+
+    def set_thirdparty_profile_item(self, openid_type, k, v):
+        p = self.get_thirdparty_profile(openid_type)
+        p[k] = v
+        self.set_profile_item(openid_type, p)
         
     def get_avatar_url(self):
         return self.get_profile().get("avatar_url", "")
@@ -191,6 +251,11 @@ class User(object):
     def is_pdf_ready(self):
         from past.utils.pdf import is_user_pdf_file_exists
         return is_user_pdf_file_exists(self.id)
+
+    def get_dev_tokens(self):
+        from past.model.user_tokens import UserTokens
+        ids = UserTokens.get_ids_by_user_id(self.id)
+        return [UserTokens.get(x) for x in ids] or []
 
 class UserAlias(object):
 
@@ -310,7 +375,7 @@ class UserAlias(object):
         if self.type == config.OPENID_TYPE_DICT[config.OPENID_TWITTER]:
             u = User.get(self.user_id)
             return config.OPENID_TYPE_NAME_DICT[self.type],\
-                    "%s/%s" %(config.TWITTER_SITE, u.name),\
+                    "%s/#!%s" %(config.TWITTER_SITE, u.name),\
                     config.OPENID_TWITTER
 
         if self.type == config.OPENID_TYPE_DICT[config.OPENID_QQ]:
@@ -319,6 +384,21 @@ class UserAlias(object):
                     "%s/%s" %(config.QQWEIBO_SITE, \
                     User.get(self.user_id).get_thirdparty_profile(self.type).get("uid", "")), \
                     config.OPENID_QQ
+
+        if self.type == config.OPENID_TYPE_DICT[config.OPENID_WORDPRESS]:
+            ##FIXME: wordpress显示rss地址代替blog地址
+            return config.OPENID_TYPE_NAME_DICT[self.type],\
+                    self.alias, config.OPENID_WORDPRESS
+        if self.type == config.OPENID_TYPE_DICT[config.OPENID_RENREN]:
+            return config.OPENID_TYPE_NAME_DICT[self.type],\
+                    "%s/%s" %(config.RENREN_SITE, self.alias), config.OPENID_RENREN
+        if self.type == config.OPENID_TYPE_DICT[config.OPENID_INSTAGRAM]:
+            user = User.get_user_by_alias(self.type, self.alias)
+            profile = user and user.get_thirdparty_profile(self.type)
+            uid = profile and profile.get("uid", "")
+            return config.OPENID_TYPE_NAME_DICT[self.type],\
+                    config.INSTAGRAM_USER_PAGE %uid, config.OPENID_INSTAGRAM
+
 
 class OAuth2Token(object):
    
@@ -358,52 +438,88 @@ class OAuth2Token(object):
         return ot
 
 
-def life(user):
-    life_dict = {}
-    uas = user.get_alias()
-    for ua in uas:
-        life_dict[ua.type] = [config.OPENID_TYPE_NAME_DICT.get(ua.type)]
-        cate = None
-        if ua.type == config.OPENID_TYPE_DICT[config.OPENID_DOUBAN]:
-            cates = config.CATE_DOUBAN_STATUS
-        elif ua.type == config.OPENID_TYPE_DICT[config.OPENID_SINA]:
-            cates = config.CATE_SINA_STATUS
-        elif ua.type == config.OPENID_TYPE_DICT[config.OPENID_QQ]:
-            cates = config.CATE_QQWEIBO_STATUS
-        elif ua.type == config.OPENID_TYPE_DICT[config.OPENID_TWITTER]:
-            cates = config.CATE_TWITTER_STATUS
-        
+class Confirmation(object):
+    def __init__(self, random_id, text, time):
+        self.random_id = random_id
+        self.text = text
+        self.time = time
     
-    ## just for tecent_weibo
     @classmethod
-    def get_oldest_create_time(cls, cate, user_id):
-        cursor = db_conn.execute('''select min(create_time) from status 
-            where category=%s and user_id=%s''', (cate, user_id))
+    def get_by_random_id(cls, random_id):
+        cursor = db_conn.execute('''select text, time from confirmation 
+                where random_id=%s''', random_id)
         row = cursor.fetchone()
         cursor and cursor.close()
         if row:
-            return row[0]
-        else:
-            return None
+            return cls(random_id, row[0], row[1])
     
-    @classmethod
-    def get_count_by_cate(cls, cate, user_id):
-        cursor = db_conn.execute('''select count(1) from status 
-            where category=%s and user_id=%s''', (cate, user_id))
-        row = cursor.fetchone()
-        cursor and cursor.close()
-        if row:
-            return row[0]
-        else:
-            return 0
+    def delete(self):
+        Confirmation.delete_by_random_id(self.random_id)
 
     @classmethod
-    def get_count_by_user(cls, user_id):
-        cursor = db_conn.execute('''select count(1) from status 
-            where user_id=%s''', user_id)
+    def delete_by_random_id(cls, random_id):
+        db_conn.execute('''delete from confirmation 
+                where random_id=%s''', random_id)
+        db_conn.commit()
+
+    @classmethod
+    def add(cls, random_id, text):
+        cursor = None
+        try:
+            cursor = db_conn.execute('''insert into confirmation (random_id, text) values(%s, %s)''',
+                    (random_id, text))
+            db_conn.commit()
+            return True
+        except IntegrityError:
+            db_conn.rollback()
+        finally:
+            cursor and cursor.close()
+
+
+class PdfSettings(object):
+    def __init__(self, user_id, time):
+        self.user_id = user_id
+        self.time = time
+
+    @classmethod
+    def _clear_cache(cls, user_id=None):
+        if user_id:
+            mc.delete("pdf_settings:u%s" % user_id)
+        mc.delete("pdf_settings:all_uids")
+            
+
+    @classmethod
+    @cache("pdf_settings:all_uids")
+    def get_all_user_ids(cls):
+        cursor = db_conn.execute('''select user_id from pdf_settings''')
+        rows = cursor.fetchall()
+        cursor and cursor.close()
+        return [str(row[0]) for row in rows]
+
+    @classmethod
+    @cache("pdf_settings:u{user_id}")
+    def is_user_id_exists(cls, user_id):
+        cursor = db_conn.execute('''select user_id from pdf_settings where user_id=%s''', user_id)
         row = cursor.fetchone()
         cursor and cursor.close()
-        if row:
-            return row[0]
-        else:
-            return 0
+        return True if row else False
+
+    @classmethod
+    def add_user_id(cls, user_id):
+        cursor = None
+        try:
+            cursor = db_conn.execute('''insert into pdf_settings (user_id) values (%s)''', user_id)
+            db_conn.commit()
+            cls._clear_cache(user_id)
+            return True
+        except IntegrityError:
+            db_conn.rollback()
+        finally:
+            cursor and cursor.close()
+
+    @classmethod
+    def remove_user_id(cls, user_id):
+        cursor = db_conn.execute('''delete from pdf_settings where user_id=%s''', user_id)
+        db_conn.commit()
+        cls._clear_cache(user_id)
+

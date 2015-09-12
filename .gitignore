@@ -1,5 +1,9 @@
 *.swp
 *.pyc
+*.txt
+*.tar.gz
+*.xdb
+*.swo
 
 local_config.py
 env/
@@ -7,5 +11,22 @@ build/
 third-src/
 third/
 var/
+log
 
 nohup.out
+
+*.log
+backup/
+cronjob/backup_data.sh
+cronjob/remove_cache.sh
+cronjob/schema_dump.sql
+cronjob/wp_linjuly_data_dump.sql
+cronjob/wp_simplelife_data_dump.sql
+past/schema_dump.sql
+past/static/font/
+past/static/google8224590caf5c39a4.html
+past/utils/.pdf.py.swo
+tools/del_douban_miniblog.py
+tools/del_status_by_user.sh
+tools/get_user_email.py
+

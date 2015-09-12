@@ -2,7 +2,6 @@
 
 <!-- 个人信息框 -->
 {%if user%}
-<div id="navi_login">
     <div class="member">
         <div class="avatar">
             <a href="/user/{{user.id}}"><img src="{{user.get_icon_url()}}" target="_blank" alt="{{user.name}}"></a>
@@ -16,7 +15,7 @@
                 <span><i>N.{{user.id}}</i></span>
             </div>
 
-            <p>
+            <span>
                 {%set uas = user.get_alias()%}
                 {%for ua in uas%}
                     {%set h = ua.get_homepage_url()%}
@@ -28,52 +27,57 @@
                 {%if unbinded%}
                     {%for ub in unbinded%}
                         <span class="from {{ub[1]}}">
+                            {%if ub[0] == 'W'%}
+                            <a title="绑定wordpress" href="/bind/{{ub[1]}}">{{ub[1]}}</a>
+                            {%else%}
                             <a title="添加{{ub[2]}}授权登录" href="/connect/{{ub[1]}}">{{ub[1]}}</a>
+                            {%endif%}
                         </span>
                     {%endfor%}
                 {%endif%}
-            </p>
+            </span>
         </div>
     </div>
-</div>
 {%endif%}
 <!-- End 个人信息框 -->
 
 {%- endmacro %}
 
 {% macro connect_block() -%}
-<div id="navi">
-    <ul>
-        <li class="login qq"><a title="使用腾讯微博授权登录" href="/connect/qq">qq</a></li>
-        <li class="login sina"><a title="使用新浪微博授权登录" href="/connect/sina">sina</a></li>
-        <li class="login douban"><a title="使用豆瓣授权登录" href="/connect/douban">douban</a></li>
-        <li class="login twitter"><a title="使用 Twitter 授权登录" href="/connect/twitter">twitter</a></li>
-    </ul>
-</div>
+    <li class="login qq"><a title="使用腾讯微博授权登录" href="/connect/qq">qq</a></li>
+    <li class="login sina"><a title="使用新浪微博授权登录" href="/connect/sina">sina</a></li>
+    <li class="login douban"><a title="使用豆瓣授权登录" href="/connect/douban">douban</a></li>
+    <li class="login twitter"><a title="使用 Twitter 授权登录" href="/connect/twitter">twitter</a></li>
+    <li class="login renren"><a title="使用人人授权登录" href="/connect/renren">renren</a></li>
+    <li class="login instagram"><a title="使用 instagram 授权登录" href="/connect/instagram">instagram</a></li>
 {%- endmacro %}
 
 
-{% macro notification_block(with_flash=True) -%}
-<div id="notification">
-    {% if with_flash %}
+{% macro notification_block(user, with_flash=True) -%}
+    {% set fillup_email = user and not user.get_email()%}
+
+    {% if with_flash or fillup_email %}
     {% with msgs = get_flashed_messages(with_categories=true) %}
-        {% if msgs %}
-        <div class="box">
-            <div class="inner"> 
+        {% if msgs or fillup_email%}
+<div id="notification" class="alert alert-info" style="margin-top:5px;">
+            {%if fillup_email%}
+                <li class="tip">请在<a href="/settings">设置页面</a>补充一下你的邮箱，PDF文件和往事提醒，会发送到你的邮箱。</li>
+            {%endif%}
+
             {% for cate, msg in msgs %}
                 <li class="{{cate}}">{{msg}}</li>
             {% endfor %}
-            </div>
-        </div>
-        <div class="sep20"></div>
+
+</div>
+<div class="sep5"></div>
         {% endif %}
     {% endwith %}
     {% endif %}
-</div>
 {%- endmacro %}
 
 
 {% macro rightbar_tags_block(tags_list) -%}
+{%if tags_list%}
 <div class="box">
     <div class="cell">
         <span class="bigger">个人关键字</span>
@@ -89,36 +93,117 @@
         <span>个人关键字是thepast根据你的timeline自动提取的，如果你觉得不错，请推荐给你的朋友^^</span>
     </div>
 </div>
+<div class="sep10"></div>
+{%endif%}
 {%- endmacro %}
 
 {% macro rightbar_intros_block(intros) -%}
-<div class="box">
-    <div class="cell">
-        <span class="bigger">个人介绍</span>
-    </div>
+    {%if intros%}
+    <div class="box">
+        <div class="cell">
+            <span class="bigger">个人介绍</span>
+        </div>
 
-    {% for intro in intros%}
-    <div class="inner">
-        {{intro|nl2br|safe}}
+        {% for intro in intros%}
+        <div class="inner">
+            {{intro}}
+        </div>
+        {% endfor%}
     </div>
-    {% endfor%}
-</div>
+    <div class="sep10"></div>
+    {%endif%}
 {%- endmacro %}
 
 
 {% macro rightbar_feedback_block() -%}
 <div class="box">
-    <div class="cell"> <span class="bigger">反馈和帮助</span> </div>
-
+    <div class="cell"> <h6 class=""><a href="#" onclick="javascript:fn_open_comt('#thepast.me# 今天的点滴，就是明天的旧时光， thepast.me， 备份微博，回顾往事  http://thepast.me');return false;">戳这里推荐给友邻们</a></h6></div>
     <div class="cell">
-        &gt; <a href="http://douban.com/people/laiwei" target="_blank">我的豆瓣 </a>
-        <div class="sep3"></div>
-        &gt; <a href="http://weibo.com/hellolaiwei" target="_blank">我的微博 </a>
+        &gt;<a href="http://douban.com/people/laiwei" target="_blank">我的豆瓣 </a> 
+        &nbsp;<a  href="http://weibo.com/hellolaiwei" target="_blank">微博 </a>
+        &nbsp;<a  href="http://twitter.com/hellolaiwei" target="_blank">twitter </a>
+        &nbsp;<a  href="http://t.qq.com/laiwei" target="_blank">腾讯 </a>
+        &nbsp;<a  href="http://instagram.com/hellolaiwei" target="_blank">instagram </a>
+        <div class="sep5"></div>
+        &gt;<a href="mailto:help@thepast.me" target="_blank">给管理员捎个话</a> help@thepast.me
     </div>
 
     <div class="inner">
-        <span>如果你觉得thepast还不错的话，请推荐一下，另欢迎任何建议和吐槽^^</span>
+        <span class="tip">如果你觉得thepast还不错的话，请<a href="#" onclick="javascript:fn_open_comt('#thepast.me# 今天的点滴，就是明天的旧时光， thepast.me， 备份微博，回顾往事  http://thepast.me');return false;">推荐</a>一下，另欢迎任何建议和吐槽^^</span>
     </div>
 
 </div>
+<div class="sep10"></div>
 {%- endmacro %}
+
+{% macro rightbar_markdown_block() -%}
+<div class="box">
+    <div class="cell"> <span class="bigger">Markdown</span> </div>
+
+    <div class="cell">
+        &gt; <a href="http://daringfireball.net/projects/markdown/" target="_blank">Markdown标准 </a>
+        <div class="sep5"></div>
+        &gt; <a href="http://markdown.tw/" target="_blank">格式参考 </a>
+    </div>
+
+    <div class="inner">
+    <span class="">Markdown 是一种轻量级标记语言，创始人为John Gruber和Aaron Swartz。它允许人们“使用易读易写的纯文本格式编写文档，然后转换成有效的XHTML(或者HTML)文档”</span>
+    </div>
+
+</div>
+<div class="sep10"></div>
+{%- endmacro %}
+
+{% macro rightbar_note_block() -%}
+<div class="box">
+    <div class="cell"> <span class="bigger">日记</span> </div>
+
+    <div class="cell">
+        &gt; <a href="/note/create">写日记 </a> &nbsp;&nbsp; &gt; <a href="/notes">日记列表 </a>
+    </div>
+
+    <div class="inner">
+    <span class="">今年写日记，明年再来看!</span>
+    </div>
+
+</div>
+<div class="sep10"></div>
+{%- endmacro %}
+
+{% macro rightbar_googlead_block() -%}
+<div class="box">
+    <div class="cell"> <span class="bigger">支持</span> </div>
+
+    <div class="cell">
+        <p>&gt; <a target="_blank" href="https://www.gittip.com/laiwei/">Tip me on github :)</a></p>
+        <p>&gt; <a target="_blank" href="https://me.alipay.com/hellolaiwei">通过支付宝捐助 :)</a></p>
+    </div>
+
+    <div class="inner">
+        <script type="text/javascript"><!--
+        google_ad_client = "ca-pub-3265197373328058";
+        /* thepast-rightbar-250w */
+        google_ad_slot = "6156094631";
+        google_ad_width = 250;
+        google_ad_height = 250;
+        //-->
+        </script>
+        <script type="text/javascript"
+        src="http://pagead2.googlesyndication.com/pagead/show_ads.js">
+        </script>
+    </div>
+
+</div>
+<div class="sep10"></div>
+{%- endmacro %}
+
+{% macro rightbar_tip_block() -%}
+<div class="box">
+    <div class="inner">
+        <p class="tip"></p>
+    </div>
+
+</div>
+<div class="sep10"></div>
+{%- endmacro %}
+

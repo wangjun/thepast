@@ -1,9 +1,13 @@
 #-*- coding:utf-8 -*-
 
+import re
+import time
 import datetime
+import hashlib
 
 from past import config
-from past.utils.escape import json_decode
+from past.utils.escape import json_decode , clear_html_element
+from past.model.note import Note
 
 ## User数据接口 
 class AbsUserData(object):
@@ -203,6 +207,66 @@ class QQWeiboUser(AbsUserData):
         return "%s-%s-%s" % (self.data.get("birth_year", ""),
             self.data.get("birth_month", ""), self.data.get("birth_day"))
 
+## renren user数据接口
+class RenrenUser(AbsUserData):
+
+    def __init__(self, data):
+        super(RenrenUser, self).__init__(data)
+
+    def get_user_id(self):
+        return self.data.get("uid","")
+
+    def get_uid(self):
+        return self.data.get("uid", "")
+
+    def get_nickname(self):
+        return self.data.get("name", "")
+
+    def get_intro(self):
+        return ""
+
+    def get_signature(self):
+        return ""
+
+    def get_avatar(self):
+        return self.data.get("headurl", "")
+
+    def get_icon(self):
+        return self.data.get("tinyurl", "")
+
+    def get_email(self):
+        return ""
+
+## instagram user数据接口
+class InstagramUser(AbsUserData):
+
+    def __init__(self, data):
+        super(InstagramUser, self).__init__(data)
+
+    def get_user_id(self):
+        return self.data.get("id","")
+
+    def get_uid(self):
+        return self.data.get("username", "")
+
+    def get_nickname(self):
+        return self.data.get("full_name", "") or self.get_uid()
+
+    def get_intro(self):
+        return self.data.get("bio", "")
+
+    def get_signature(self):
+        return self.data.get("website", "")
+
+    def get_avatar(self):
+        return self.data.get("profile_picture", "")
+
+    def get_icon(self):
+        return self.data.get("profile_picture", "")
+
+    def get_email(self):
+        return ""
+
 ## 第三方数据接口
 class AbsData(object):
     
@@ -214,7 +278,7 @@ class AbsData(object):
             try:
                 self.data = json_decode(data)
             except Exception, e:
-                import traceback; print traceback.format_exc()
+                #import traceback; print traceback.format_exc()
                 self.data = {}
 
     ## 注释以微博为例
@@ -256,6 +320,50 @@ class AbsData(object):
     def get_origin_uri(self):
         return ""
 
+    ##摘要信息，对于blog等长文来说很有用,视情况在子类中覆盖该方法
+    def get_summary(self):
+        return self.get_content()
+
+    ##lbs信息
+    def get_location(self):
+        return ""
+
+    ##附件信息(暂时只有豆瓣的有)
+    def get_attachments(self):
+        return None
+
+class ThepastNoteData(AbsData):
+    
+    def __init__(self, note):
+        self.site = config.OPENID_TYPE_DICT[config.OPENID_THEPAST]
+        self.category = config.CATE_THEPAST_NOTE
+        self.data = note
+        super(ThepastNoteData, self).__init__(
+                self.site, self.category, self.data)
+
+    def get_origin_id(self):
+        return self.data and self.data.id
+
+    def get_create_time(self):
+        return self.data and self.data.create_time
+
+    def get_title(self):
+        return self.data and self.data.title or ""
+
+    def get_content(self):
+        if self.data:
+            return self.data.render_content()
+        return ""
+
+    def get_origin_uri(self):
+        if self.data:
+            return config.THEPAST_NOTE % self.data.id
+        return ""
+
+    def get_summary(self):
+        return self.data and self.data.content[:140]
+        
+
 class DoubanData(AbsData):
     
     def __init__(self, category, data):
@@ -278,10 +386,10 @@ class DoubanNoteData(DoubanData):
         return self.data.get("published",{}).get("$t")
 
     def get_title(self):
-        return self.data.get("title", {}).get("$t")
+        return self.data.get("title", {}).get("$t") or ""
 
     def get_content(self):
-        return self.data.get("content", {}).get("$t")
+        return self.data.get("content", {}).get("$t") or ""
 
 # 广播
 class DoubanMiniBlogData(DoubanData):
@@ -299,10 +407,10 @@ class DoubanMiniBlogData(DoubanData):
         return self.data.get("published",{}).get("$t")
 
     def get_title(self):
-        return self.data.get("title", {}).get("$t")
+        return self.data.get("title", {}).get("$t") or ""
 
     def get_content(self):
-        return self.data.get("content", {}).get("$t")
+        return self.data.get("content", {}).get("$t") or ""
     
     def _get_links(self):
         links = {}
@@ -324,6 +432,19 @@ class DoubanStatusData(DoubanData):
         super(DoubanStatusData, self).__init__(
             config.CATE_DOUBAN_STATUS, data)
 
+    def _parse_score(self, title):
+        r1 = title.find("[score]")
+        r2 = title.find("[/score]")
+        if r1 >= 0 and r2 >= 0:
+            result = title[0:r1]
+            star = int(title[r1+7:r2])
+            for i in range(0, star):
+                result += u"\u2605"
+            result += title[r2+8:]
+            return result
+        else:
+            return title
+
     def get_origin_id(self):
         return str(self.data.get("id", ""))
 
@@ -331,7 +452,9 @@ class DoubanStatusData(DoubanData):
         return self.data.get("created_at")
 
     def get_content(self):
-        return self.data.get("text", "")
+        title = self.data.get("title", "")
+        title = self._parse_score(title)
+        return "%s %s" %(title, self.data.get("text", ""))
 
     def get_retweeted_data(self):
         r = self.data.get("reshared_status")
@@ -347,7 +470,7 @@ class DoubanStatusData(DoubanData):
             medias = att and att.get_medias()
             for x in medias:
                 if x and x.get_type() == 'image':
-                    o.append(x.get_src().replace("http://img3", "http://img2").replace("http://img1", "http://img2"))   
+                    o.append(x.get_src().replace("http://img3", "http://img2").replace("http://img1", "http://img2").replace("http://img5", "http://img2"))   
         return o
 
     def get_user(self):
@@ -378,7 +501,7 @@ class _Attachment(object):
     def get_description(self):
         return self.data.get("description")
     def get_title(self):
-        return self.data.get("title")
+        return self.data.get("title", "")
     def get_href(self):
         return self.data.get("expaned_href") or self.data.get("href")
     def get_medias(self):
@@ -393,7 +516,8 @@ class _Media(object):
     def get_type(self):
         return self.data.get("type")
     def get_src(self):
-        return self.data.get("original_src", "").replace("/spic/", "/mpic/")
+        src = self.data.get("original_src", "") or self.data.get("src", "")
+        return src.replace("/spic/", "/mpic/").replace("/small/", "/raw/")
     
 class SinaWeiboData(AbsData):
     
@@ -411,9 +535,13 @@ class SinaWeiboStatusData(SinaWeiboData):
         return self.data.get("idstr", "")
 
     def get_create_time(self):
-        t = self.data.get("created_at", "")
-        return datetime.datetime.strptime(t, "%a %b %d %H:%M:%S +0800 %Y")
-
+        try:
+            t = self.data.get("created_at", "")
+            return datetime.datetime.strptime(t, "%a %b %d %H:%M:%S +0800 %Y")
+        except Exception, e:
+            print e
+            return None
+    
     def get_title(self):
         return ""
 
@@ -429,15 +557,15 @@ class SinaWeiboStatusData(SinaWeiboData):
         return SinaWeiboUser(self.data.get("user"))
 
     def get_origin_pic(self):
-        return self.data.get("original_pic", "")
+        return re.sub("ww[23456].sinaimg.cn", "ww1.sinaimg.cn", self.data.get("original_pic", ""))
 
     def get_thumbnail_pic(self):
-        return self.data.get("thumbnail_pic", "")
+        return re.sub("ww[23456].sinaimg.cn", "ww1.sinaimg.cn", self.data.get("thumbnail_pic", ""))
 
     def get_middle_pic(self):
-        return self.data.get("bmiddle_pic", "")
+        return re.sub("ww[23456].sinaimg.cn", "ww1.sinaimg.cn", self.data.get("bmiddle_pic", ""))
 
-    def get_images(self, size="middle"):
+    def get_images(self, size="origin"):
         method = "get_%s_pic" % size
         if hasattr(self, method):
             i = getattr(self, method)()
@@ -445,7 +573,6 @@ class SinaWeiboStatusData(SinaWeiboData):
                 return [i]
         return []
         
-
 # twitter status
 class TwitterStatusData(AbsData):
     def __init__(self, data):
@@ -504,7 +631,14 @@ class QQWeiboStatusData(AbsData):
         return self.data.get("text", "") 
     
     def get_retweeted_data(self):
-        return self.data.get("origtext", "") 
+        re = self.data.get("source")
+        if re and re != 'null':
+            return QQWeiboStatusData(re)
+        else:
+            return ""
+
+    def get_user(self):
+        return QQWeiboUser(self.data) 
 
     def _get_images(self, size):
         r = []
@@ -530,3 +664,264 @@ class QQWeiboStatusData(AbsData):
 
     def get_origin_uri(self):
         return self.data.get("fromurl")
+
+
+class WordpressData(AbsData):
+    def __init__(self, data):
+        super(WordpressData, self).__init__(
+                config.OPENID_TYPE_DICT[config.OPENID_WORDPRESS],
+                config.CATE_WORDPRESS_POST, data)
+
+    def get_origin_id(self):
+        id_ = self.data.get("id", "") or self.data.get("link", "")
+        m = hashlib.md5()
+        m.update(id_)
+        return m.hexdigest()[:16]
+
+    def get_create_time(self):
+        e = self.data
+        published = None
+        try:
+            published = e.published_parsed
+        except AttributeError:
+            try:
+                published = e.updated_parsed
+            except AttributeError:
+                try:
+                    published = e.created_parsed
+                except AttributeError:
+                    published = None
+        if published:
+            return datetime.datetime.fromtimestamp(time.mktime(published))
+        
+    
+    def get_title(self):
+        return self.data.get("title", "")
+
+    def get_content(self):
+        content = self.data.get("content")
+        if content:
+            c = content[0]
+            return c and c.get("value")
+        return ""
+
+    def get_user(self):
+        return self.data.get("author", "")
+
+    def get_origin_uri(self):
+        return self.data.get("link", "") or self.data.get("id", "")
+
+    def get_summary(self):
+        return clear_html_element(self.data.get("summary", ""))[:150]
+
+class RenrenData(AbsData):
+    
+    def __init__(self, category, data):
+        super(RenrenData, self).__init__( 
+                config.OPENID_TYPE_DICT[config.OPENID_RENREN], category, data)
+
+class RenrenStatusData(RenrenData):
+    def __init__(self, data):
+        super(RenrenStatusData, self).__init__(
+                config.CATE_RENREN_STATUS, data)
+    
+    def get_origin_id(self):
+        return str(self.data.get("status_id", ""))
+
+    def get_create_time(self):
+        return self.data.get("time")
+
+    def get_title(self):
+        return ""
+
+    def get_content(self):
+        return self.data.get("message", "") 
+    
+    def get_retweeted_data(self):
+        d = {}
+        d["status_id"] = self.data.get("root_status_id", "")
+        forward_message = self.data.get("forward_message", "")
+        root_message = self.data.get("root_message", "")
+        if forward_message or root_message:
+            d["message"] = "%s %s" %(forward_message, root_message)
+        else:
+            d["message"] = ""
+        d["uid"] = self.data.get("root_uid", "")
+        d["username"] = self.data.get("root_username", "")
+        d["time"] = self.data.get("time", "")
+        
+        return RenrenStatusData(d)
+
+    def get_user(self):
+        return self.data.get("uid", "")
+
+    def get_origin_uri(self):
+        return "%s/%s#//status/status?id=%s" %(config.RENREN_SITE, self.data.get("uid"), self.data.get("uid"))
+
+    def get_location(self):
+        return self.data.get("place")
+
+class RenrenFeedData(RenrenData):
+    def __init__(self, data):
+        super(RenrenFeedData, self).__init__(
+                config.CATE_RENREN_FEED, data)
+    
+class RenrenBlogData(RenrenData):
+    def __init__(self, data):
+        super(RenrenBlogData, self).__init__(
+                config.CATE_RENREN_BLOG, data)
+    
+    def get_origin_id(self):
+        return str(self.data.get("id", ""))
+
+    def get_create_time(self):
+        return self.data.get("time")
+
+    def get_title(self):
+        return self.data.get("title", "")
+
+    def get_content(self):
+        return self.data.get("content", "") 
+
+    def get_user(self):
+        return self.data.get("uid", "")
+    
+    def get_origin_uri(self):
+        return config.RENREN_BLOG %(self.get_user(), self.get_origin_id())
+    
+    def get_summary(self):
+        c = self.get_content()
+        if c and isinstance(c, basestring):
+            return c[:140]
+        return ""
+
+class RenrenAlbumData(RenrenData):
+    def __init__(self, data):
+        super(RenrenAlbumData, self).__init__(
+                config.CATE_RENREN_ALBUM, data)
+    
+    def get_origin_id(self):
+        return str(self.data.get("aid", ""))
+
+    def get_create_time(self):
+        return self.data.get("create_time")
+
+    def get_title(self):
+        return self.data.get("name", "")
+
+    def get_content(self):
+        return self.data.get("description", "")
+
+    def get_user(self):
+        return self.data.get("uid", "")
+
+    def get_images(self):
+        return [self.data.get("url", "")]
+
+    def get_size(self):
+        return self.data.get("size", 100)
+        
+
+class RenrenPhotoData(RenrenData):
+    def __init__(self, data):
+        super(RenrenPhotoData, self).__init__(
+                config.CATE_RENREN_PHOTO, data)
+    
+    def get_origin_id(self):
+        return str(self.data.get("pid", ""))
+
+    def get_create_time(self):
+        return self.data.get("time")
+
+    def get_title(self):
+        return self.data.get("caption", "")
+
+    def get_content(self):
+        return ""
+
+    def get_user(self):
+        return self.data.get("uid", "")
+    
+    def get_origin_pic(self):
+        return self.data.get("url_large", "")
+
+    def get_thumbnail_pic(self):
+        return self.data.get("url_tiny", "")
+
+    def get_middle_pic(self):
+        return self.data.get("url_head", "")
+
+    def get_images(self, size="origin"):
+        method = "get_%s_pic" % size
+        r = []
+        if hasattr(self, method):
+            p = getattr(self, method)()
+            if p:
+                if not isinstance(p, list):
+                    r.append(p)
+                else:
+                    r.extend(p)
+        return r
+
+class InstagramStatusData(AbsData):
+    def __init__(self, data):
+        super(InstagramStatusData, self).__init__(
+                config.OPENID_TYPE_DICT[config.OPENID_INSTAGRAM], 
+                config.CATE_INSTAGRAM_STATUS, data)
+    
+    def get_origin_id(self):
+        return str(self.data.get("id", ""))
+
+    def get_create_time(self):
+        t = self.data.get("created_time")
+        if not t:
+            return None
+        t = float(t)
+        return datetime.datetime.fromtimestamp(t)
+
+    def get_title(self):
+        caption = self.data.get("caption")
+        if caption and isinstance(caption, dict):
+            return caption.get("text", "")
+        return ""
+
+    def get_content(self):
+        return ""
+
+    def get_user(self):
+        udata = self.data.get("user")
+        if udata and isinstance(udata, dict):
+            return InstagramUser(udata)
+    
+    def get_origin_pic(self):
+        images = self.data.get("images")
+        if images:
+            return images.get("standard_resolution",{}).get("url")
+
+    def get_thumbnail_pic(self):
+        images = self.data.get("images")
+        if images:
+            return images.get("thumbnail",{}).get("url")
+
+    def get_middle_pic(self):
+        images = self.data.get("images")
+        if images:
+            return images.get("low_resolution",{}).get("url")
+
+    def get_images(self, size="origin"):
+        method = "get_%s_pic" % size
+        r = []
+        if hasattr(self, method):
+            p = getattr(self, method)()
+            if p:
+                if not isinstance(p, list):
+                    r.append(p)
+                else:
+                    r.extend(p)
+        return r
+
+    def get_origin_uri(self):
+        return self.data.get("link", "")
+
+    def get_location(self):
+        return self.data.get("location")

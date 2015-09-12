@@ -1,0 +1,62 @@
+{% extends "v2/timeline_base.html" %}
+
+<!-- 个人&&其他用户最新页  -->
+{%block title%}{{user.name}} | 旧时光{%endblock%}
+
+{%block more_js%}
+{{super()}}
+<script type="text/javascript">
+jQuery(function(){
+    function masonry(){
+        jQuery("#timeline").masonry({
+            itemSelector: '.left',
+        });
+        jQuery("#timeline").masonry({
+            itemSelector: '.right',
+        });
+    }
+
+    var g_start = parseInt("{{g.start}}");
+    var next_start = function(){
+        return g_start + parseInt("{{g.count}}");
+    }
+
+    var jQuerytimeline = jQuery('.timeline'),
+        jQueryspinner = jQuery('#Spinner').hide(),
+        jLoadmoreIndicator = jQuery('#loadmore_indicator');
+   
+    function loadMore(){
+      jQuery(window).unbind('scroll.posts');
+      jQueryspinner.show();
+      jLoadmoreIndicator.show();
+
+      jQuery.ajax({
+        url: "/{{user.uid}}/more?start=" + next_start() + "&cate={{g.cate}}",
+        success: function(html){
+            if(html){
+                jQuerytimeline.append(jQuery(html));
+                //jQuery('#timeline').masonry('appended', jQuery(html), true);
+                jQueryspinner.hide();
+                jLoadmoreIndicator.hide();
+                g_start = g_start + parseInt("{{g.count}}");
+            }else{
+                jQueryspinner.html('<p>没有更多消息了：）</p>');
+            }
+            
+            jQuery(window).bind('scroll.posts',scrollEvent);
+        }
+      });
+    }
+   
+    //lastAddedLiveFunc();
+    jQuery(window).bind('scroll.posts',scrollEvent);
+    
+    function scrollEvent(){
+      var wintop = jQuery(window).scrollTop(), docheight = jQuery(document).height(), winheight = jQuery(window).height();
+      var  scrolltrigger = 0.95;
+
+      if  ((wintop/(docheight-winheight)) > scrolltrigger)  loadMore();
+    }
+})
+</script>
+{%endblock%}

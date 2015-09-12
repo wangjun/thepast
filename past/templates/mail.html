@@ -1,0 +1,227 @@
+
+{% import "status.html" as status_tmpl_helper %}
+
+{% macro status_in_past(status_of_yesterday, status_of_today_in_history, YESTERDAY, config, intros) -%}
+<html>
+<head>
+    <style  type="text/css">
+        #thepast {
+        }
+        #thepast a:link,a:visited,a:active{color:#8C7E7E;text-decoration:none;}
+        #thepast a:hover{color:#4d5256;text-decoration:underline;}
+        #thepast .fr{float:right;}
+        #thepast .fl{float:left;}
+        #thepast .clear{clear:both;}
+
+        #thepast .box {
+
+            background-color: #fff;
+            border: 1px solid #fff;
+        }
+
+        #thepast .box .cell {
+            padding: 10px;
+            font-size: 12px;
+            line-height: 16px;
+            border-bottom: 1px solid #e2e2e2;
+        }
+
+        #thepast .box .inner{
+            padding: 10px;
+            font-size: 12px;
+            line-height: 16px;
+        }
+
+        #thepast img{
+            max-width:200px;
+            max-height:150px;
+        }
+
+        #thepast .bigger {
+            font-size: 16px;
+        }
+        #thepast .smaller{
+            font-size: 11px;
+        }
+        #thepast .fade { 
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div id="thepast" style="min-width:600px;margin:0 auto;padding: 39px;font-family:'Helvetica Neue',Helvetica,Arial,Sans-serif;font-size:13px;line-height:22px;background-color:#f5f5f5;">
+    <table border="0" cellspacing="0" cellpadding="0" width="552" style="border:1px solid #dedede;border-bottom:2px solid #dedede;margin:0 auto;background-color:#ffffff;">
+    <tbody>
+    <tr>
+        <td style="padding:0 25px 5px">
+        <div class="box" style="background-color: #fff; border: 1px solid #fff;">
+            <div class="cell" style="padding: 10px; font-size: 20px" align="center">
+                <a href="http://thepast.me/past">thepast.me</a>｜整理自己的故事
+            </div>
+            <div class="inner" style="padding: 5px; font-size: 11px; line-height: 16px; font-color:#999;">
+                <p>thepast帮你整理自己的互联网印迹，每天会尝试提醒你过去发生的一些事情，期望能带给你不一样的心情。
+                <a style="text-decoration:none;" href="http://thepast.me/past">[在线版本]</a>&nbsp;
+                <a style="text-decoration:none;" href="http://thepast.me/pdf">[下载PDF版本]</a></p>
+            </div>
+        </div>
+        </td>
+    </tr>
+
+{%if status_of_today_in_history%}
+    <tr>
+    <td style="padding:0 25px 20px">
+
+        <div class="box" style="background-color: #fff; border: 1px solid #fff;">
+            <div class="inner" align="center" style="padding: 10px; font-size: 18px; line-height: 16px;">
+                过往的今天
+            </div>
+
+            {% set days = status_of_today_in_history.keys()|sort(reverse=True)%}
+            {% for d in days %}
+                {% set statuses = status_of_today_in_history[d] %}
+                <div class="cell" style="padding: 10px; font-size: 15px; line-height: 16px; border-bottom: 1px solid #e2e2e2;"> 
+                    {{d}}, 找到了{{statuses|length}}条记忆
+                </div>
+                {%for s in statuses %}
+                <div class="cell" style="padding: 10px; font-size: 12px; line-height: 16px; border-bottom: 1px solid #e2e2e2;"> 
+                    {{s.create_time.strftime("%H:%M:%S")}} 
+                    <!-- 来源 -->
+                    {%set from_ = s.get_origin_uri()%}
+                    {%if from_%}
+                        <a style="color:#8C7E7E;text-decoration:none;" target="_blank" href="{{from_[1]}}">&nbsp;&nbsp;from {{from_[0]}}</a>
+                    {%endif%}
+
+                    <br/>
+                    {%if s.category == config.CATE_DOUBAN_STATUS%}
+                        {{status_tmpl_helper.douban_status(s)}}
+                    {%endif%}
+
+                    {%if s.category == config.CATE_SINA_STATUS%}
+                        {{status_tmpl_helper.sina_status(s)}}
+                    {%endif%}
+
+                    {%if s.category == config.CATE_QQWEIBO_STATUS%}
+                        {{status_tmpl_helper.qq_weibo_status(s)}}
+                    {%endif%}
+
+                    {%if s.category == config.CATE_TWITTER_STATUS%}
+                        {{status_tmpl_helper.twitter_status(s)}}
+                    {%endif%}
+
+                    {%if s.category == config.CATE_WORDPRESS_POST%}
+                        {{status_tmpl_helper.wordpress_status(s)}}
+                    {%endif%}
+
+                    {%if s.category == config.CATE_THEPAST_NOTE%}
+                        {{status_tmpl_helper.thepast_note_status(s)}}
+                    {%endif%}
+
+                    {%if s.category == config.CATE_RENREN_STATUS%}
+                        {{status_tmpl_helper.thepast_renren_status(s)}}
+                    {%endif%}
+
+                    {%if s.category == config.CATE_RENREN_BLOG%}
+                        {{status_tmpl_helper.thepast_renren_blog(s)}}
+                    {%endif%}
+
+                    {%if s.category == config.CATE_RENREN_PHOTO or s.category == config.CATE_RENREN_ALBUM%}
+                        {{status_tmpl_helper.thepast_renren_photo(s)}}
+                    {%endif%}
+
+                    {%if s.category == config.CATE_INSTAGRAM_STATUS%}
+                        {{status_tmpl_helper.thepast_default_status(s)}}
+                    {%endif%}
+
+                </div>
+                {%endfor%}
+            {%endfor%}
+        </div>
+    </td>
+    </tr>
+{%endif%}
+
+{%if status_of_yesterday%}
+    <tr>
+    <td style="padding:0 25px 25px">
+        <div class="box" style="background-color: #fff; border: 1px solid #fff;">
+            <div class="inner" align="center" style="padding: 10px; font-size: 18px; line-height: 16px;">
+                昨天的印迹
+            </div>
+
+            <div class="cell" style="padding: 10px; font-size: 12px; line-height: 15px; border-bottom: 1px solid #e2e2e2;">
+                {{YESTERDAY}}，找到{{status_of_yesterday|length}}条回忆
+            </div>
+        {% for s in status_of_yesterday %}
+            <div class="cell" style="padding: 5px; font-size: 12px; line-height: 16px; border-bottom: 1px solid #e2e2e2;">
+                    {{s.create_time.strftime("%H:%M:%S")}} 
+                    <!-- 来源 -->
+                    {%set from_ = s.get_origin_uri()%}
+                    {%if from_%}
+                        <a style="color:#8C7E7E;text-decoration:none;" target="_blank" href="{{from_[1]}}">&nbsp;&nbsp;from {{from_[0]}}</a>
+                    {%endif%}
+                    <br/>
+
+                    {%if s.category == config.CATE_DOUBAN_STATUS%}
+                        {{status_tmpl_helper.douban_status(s)}}
+                    {%endif%}
+
+                    {%if s.category == config.CATE_SINA_STATUS%}
+                        {{status_tmpl_helper.sina_status(s)}}
+                    {%endif%}
+
+                    {%if s.category == config.CATE_QQWEIBO_STATUS%}
+                        {{status_tmpl_helper.qq_weibo_status(s)}}
+                    {%endif%}
+
+                    {%if s.category == config.CATE_TWITTER_STATUS%}
+                        {{status_tmpl_helper.twitter_status(s)}}
+                    {%endif%}
+
+                    {%if s.category == config.CATE_WORDPRESS_POST%}
+                        {{status_tmpl_helper.wordpress_status(s)}}
+                    {%endif%}
+
+                    {%if s.category == config.CATE_THEPAST_NOTE%}
+                        {{status_tmpl_helper.thepast_note_status(s)}}
+                    {%endif%}
+
+                    {%if s.category == config.CATE_RENREN_STATUS%}
+                        {{status_tmpl_helper.thepast_renren_status(s)}}
+                    {%endif%}
+
+                    {%if s.category == config.CATE_RENREN_BLOG%}
+                        {{status_tmpl_helper.thepast_renren_blog(s)}}
+                    {%endif%}
+
+                    {%if s.category == config.CATE_RENREN_PHOTO or s.category == config.CATE_RENREN_ALBUM%}
+                        {{status_tmpl_helper.thepast_renren_photo(s)}}
+                    {%endif%}
+
+                    {%if s.category == config.CATE_INSTAGRAM_STATUS%}
+                        {{status_tmpl_helper.thepast_default_status(s)}}
+                    {%endif%}
+
+            </div>
+        {%endfor%}
+        </div>
+    </td>
+    </tr>
+{%endif%}
+
+    <tr>
+        <td style="padding:0 25px 5px">
+        <div class="box" style="background-color: #fff; border: 1px solid #fff;">
+            <div class="inner" style="padding: 10px; font-size: 12px; line-height: 16px;">
+            <p>如果你不愿意接收此类邮件，那么请到<a style="color:#8C7E7E;text-decoration:none;" href="http://thepast.me/settings">这里</a>退订（^^希望这个功能只是个摆设）</p>
+            </div>
+        </div>
+        </td>
+    </tr>
+
+    </tbody>
+    </table>
+    </div>
+    <!--end of thepast-->
+</body>
+</html>
+{%- endmacro %}

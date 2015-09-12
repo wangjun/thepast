@@ -7,10 +7,9 @@ import datetime
 import MySQLdb
 import redis
 import memcache
-import pymongo
 
 from past.utils.escape import json_decode, json_encode
-import config 
+from past import config 
 
 def init_db():
     cmd = """mysql -h%s -P%s -u%s -p%s < %s""" \
@@ -46,6 +45,7 @@ def connect_redis_cache():
     return redis.Redis(config.REDIS_CACHE_HOST, config.REDIS_CACHE_PORT)
 
 def connect_mongo(dbname="thepast"):
+    import pymongo
     conn = pymongo.connection.Connection('localhost')
     db = conn.thepast
     db = getattr(conn, dbname)
@@ -66,7 +66,12 @@ class MongoDB(object):
         if r:
             return r.get("v")
         return None
-    
+
+    def mget(self, keys):
+        d = {"k": {"$in" : keys}}
+        rs = self._conn.find(d)
+        return [r["v"] for r in rs]
+
     def set(self, k, v):
         self._conn.update({"k":k},{"k":k, "v":v}, upsert=True)
 
@@ -111,4 +116,4 @@ def connect_memcached():
 db_conn = DB()
 mc = redis_cache_conn = connect_memcached()
 #redis_conn = connect_redis()
-mongo_conn = MongoDB()
+#mongo_conn = MongoDB()

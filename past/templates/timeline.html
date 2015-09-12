@@ -3,120 +3,112 @@
 {% import "status.html" as status_tmpl_helper %}
 {% import "blocks.html" as blocks %}
 
-{% block head_block %}
-    <div id="site">
-        <div id="logo" class="fl"><h1><a href="/home">ThePast.Me</a><h1></div>
-        {%if g.user.id == user.id%}
-            <!-- 自己的个人信息框 -->
-            {{blocks.people_info_block(g.user, g.unbinded)}}
-            <!-- End 个人信息框 -->
-        {%else%}
-            <!-- 其他用户的个人信息框 -->
-            {{blocks.people_info_block(user, [])}}
-        {%endif%}
+{% block css %}
+    {{super()}}
+    <link href="/static/fbtimeline/stylesheets/timeline.css" media="screen" rel="stylesheet" type="text/css" />
+    <link href="/static/fbtimeline/stylesheets/fb-buttons.css" media="screen" rel="stylesheet" type="text/css" />
+{% endblock %}
+
+{% block js%}
+    {{super()}}
+    <script src="/static/fbtimeline/javascripts/all.js" type="text/javascript"></script> 
+{% endblock %}
+
+{% block title_block %} {{user.name}}{%endblock%}
+
+{%block content_block%}
+    <div class="span12">
+        {{self.middlebar_block()}}
+        <div class="pull-right" style="width:260px; margin:20px 0px auto 9px;">
+            {{blocks.rightbar_intros_block(intros)}}
+            {{blocks.rightbar_note_block()}}
+            {{blocks.rightbar_feedback_block()}}
+        </div>
     </div>
+
 {%endblock%}
 
-{% block content_block %}
-<div id="sidebar"></div>
-<div id="rightbar">
+{% block middlebar_block %}
+<div id="timeline-container" class="pull-left">
+    <ol class="timeline clearfix">
+        <li class="spine"></li>
+        
+        {%if g.cate == g.config.CATE_THEPAST_NOTE and 0%}
+        <li class="left">
+            <i class="pointer"><a href="#" onclick="javascript:fn_click_point();" 
+                title="Post some thing, get it remindings next year.">&nbsp;</a></i>
+            <div class="unit">
+                <ol class="actions">
+                    <li class="active"><a href="#" rel="Status"><i class="icon icon-status"></i>Status</a></li>
+                </ol>
+              
+                <!-- Units -->
+                <div class="actionUnits">
+                    <div class="formUnit" id="Status">
+                        <i class="active"></i>
+                        <textarea name="" placeholder="Post sth, get the remindings next year?" 
+                            id="" rows="3" style="width:350px;"></textarea>
 
-    {{blocks.rightbar_feedback_block()}}
-    <div class="sep10"></div>
-
-    {{blocks.rightbar_tags_block(tags_list)}}
-    <div class="sep10"></div>
-    
-    {{blocks.rightbar_intros_block(intros)}}
-    <div class="sep10"></div>
-
-</div>
-
-<div id="middlebar">
-    <div class="timelines">
-        {% if not status_list and g.start == 0 %}
-            <div class="sep10"></div>
-            <span class="fade">正在努力从第三方网站同步你的timeline，请稍等刷新页面查看...</span>
-            <div class="sep10"></div>
-            <span class="fade">或者可以先去看看<a href="/user">别人的页面</a></span>
-            <div class="sep10"></div>
-        {% endif %}
-
-        {%set sorted_months = status_list.keys()|sort(reverse=True)%}
-        {%for m in sorted_months%}
-        <!-- 一月循环开始 -->
-        <div class="month">
-            <!-- 调用时间：XX年XX月 -->
-            <h2 class="title">{{m.replace("-","年")}}月</h2>
-            
-            {%set days_statuses = status_list[m]%}
-            {%set sorted_days = days_statuses.keys()|sort(reverse=True)%}
-            {%for d in sorted_days%}
-            <!-- 日循环开始 -->
-            <ul class="articles">
-                <!-- 调用日期： XX日 -->
-                <div class="day"> › {{d}}日</div>
-                
-            {%for repeated_status in days_statuses[d]|sort(reverse=True, attribute="create_time")%}
-                {%set s = repeated_status.status_list[0]%}
-
-                <li>
-                    <div class="message">
-                        <!-- 调用时间：时分秒 -->
-                        <div class="time">{{s.create_time.strftime("%H:%M:%S")}} </div>
-
-                        <div class="text">
-                            <!-- 来源 -->
-                            {%for s in repeated_status.status_list%}
-                                {%set from_ = s.get_origin_uri()%}
-                                {%if from_%}
-                                    <span class="from {{from_[0]}}"><a target="_blank" href="{{from_[1]}}"></a></span>
-                                {%endif%}
-                            {%endfor%}
-
-                            {%if s.category == config.CATE_DOUBAN_STATUS%}
-                                {{status_tmpl_helper.douban_status(s)}}
-                            {%endif%}
-
-                            {%if s.category == config.CATE_SINA_STATUS%}
-                                {{status_tmpl_helper.sina_status(s)}}
-                            {%endif%}
-
-                            {%if s.category == config.CATE_QQWEIBO_STATUS%}
-                                {{status_tmpl_helper.qq_weibo_status(s)}}
-                            {%endif%}
-
-                            {%if s.category == config.CATE_TWITTER_STATUS%}
-                                {{status_tmpl_helper.twitter_status(s)}}
-                            {%endif%}
-
-                        </div>
+                        <ol class="controls clearfix">
+                            <li class="post">
+                                <button class="uibutton confirm" type="submit">Post</button>
+                            </li>
+                        </ol>
                     </div>
-                </li>
-            {%endfor%}
+                </div>
+                <!-- / Units -->
+            </div>
+        </li>
+        {%set left = False%}
+        {%else%}
+            {%if not status_list and g.start == 0%}
+            <div class="alert alert-info">
+                <p>你还没在thepast上写过日记呢。</p>
+                <p>今天记录一下 明年再来看。</p>
+                <p><a href="/note/create">&gt;写日记</a></p>
+            </div>
+            {%endif%}
+            {%set left = True%}
+        {%endif%}
 
-            </ul>
-            <!-- 日循环结束 -->
-            {%endfor%}
-
-        </div>
-        <!-- 月循环结束 -->
+        {%for repeated_status in status_list%}
+            {%if left%}
+                <li class="left">
+            {%else%}
+                <li class="right">
+            {%endif%}
+            <i class="pointer"><a href="#" onclick="javascript:fn_click_point();" title="">&nbsp;</a></i>
+            {{status_tmpl_helper.story_unit(g, repeated_status, sync_list)}}
+            {%set left = not left%}
+            </li>
         {%endfor%}
 
-        <div class="sep10"></div>
-        <div class="box">
-            {% if g.start>0 %}
-            <a href="?start={{g.start-g.count if g.start-g.count > 0 else 0}}">上一页</a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-            {% endif %}
-            <a href="?start={{g.start+g.count}}">下一页</a>
-        </div>
-    </div>
-</div>
-<div class="clear"></div>
+    </ol>
+    <div class="sep10"></div>
+    <hr/>
+    <ul class="pager">
+        {%if g.start>0%}
+        <li class="previous">
+            <a href="?start={{g.start-g.count if g.start-g.count > 0 else 0}}&cate={{g.cate}}">&larr; Newer</a>
+        </li>
+        {%endif%}
+        <li class="next">
+            <a href="?start={{g.start+g.count}}&cate={{g.cate}}">Older &rarr;</a>
+        </li>
+    </ul>
+</div> <!--end of row-fluid-->
+
+<script src="{{ url_for('static', filename='js/jquery.magnifier.js') }}" type="text/javascript"></script>
+<script>
+    jQuery(function($) {
+        $("img").error( function(){$(this).css({ visibility:"hidden" }); });
+    });
+</script>
 
 <script>
-$("img").error( function(){$(this).css({ visibility:"hidden" });
-});
+    function fn_click_point(obj){
+        //console.log(obj);
+    }
 </script>
 
 {% endblock %}

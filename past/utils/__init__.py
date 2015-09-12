@@ -3,13 +3,51 @@ import os
 import re
 import time
 import datetime
+import imghdr
 import httplib2
+import mimetypes
 import random
 import string
+import markdown2
 from past import config
 
 def randbytes(bytes_):
     return ''.join(random.sample(string.ascii_letters + string.digits, bytes_))
+
+
+def random_string (length):
+    return ''.join(random.choice(string.letters) for ii in range (length + 1))
+
+def encode_multipart_data (data, files):
+    boundary = random_string (30)
+
+    def get_content_type (filename):
+        return mimetypes.guess_type (filename)[0] or 'application/octet-stream'
+
+    def encode_field(field_name):
+        return ('--' + boundary,
+                'Content-Disposition: form-data; name="%s"' % field_name,
+                '', str (data [field_name]))
+
+    def encode_file(field_name):
+        filename = files[field_name]
+        return ('--' + boundary,
+                'Content-Disposition: form-data; name="%s"; filename="%s"' % (field_name, filename),
+                'Content-Type: %s' % get_content_type(filename),
+                '', open (filename, 'rb').read ())
+
+    lines = []
+    for name in data:
+        lines.extend (encode_field (name))
+    for name in files:
+        lines.extend (encode_file (name))
+    lines.extend (('--%s--' % boundary, ''))
+    body = '\r\n'.join (lines)
+
+    headers = {'content-type': 'multipart/form-data; boundary=' + boundary,
+               'content-length': str (len (body))}
+
+    return body, headers
 
 def httplib2_request(uri, method="GET", body='', headers=None, 
         redirections=httplib2.DEFAULT_MAX_REDIRECTS, 
@@ -71,3 +109,17 @@ def is_valid_email(email):
         return EMAILRE.match(email) != None 
     return False
 
+def is_valid_image(content):
+     return content and imghdr.what(content) in \
+            [ 'rgb' ,'gif' ,'pbm' ,'pgm' ,
+            'ppm' ,'tiff' ,'rast' ,'xbm' ,'jpeg' ,'bmp' ,'png']
+
+def sizeof_fmt(num):
+    for x in ['bytes','KB','MB','GB','TB']:
+        if num < 1024.0:
+            return "%3.1f%s" % (num, x)
+        num /= 1024.0
+
+def markdownize(content):
+    return markdown2.markdown(content, extras=["wiki-tables", "code-friendly"])
+    
